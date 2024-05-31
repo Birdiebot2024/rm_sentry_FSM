@@ -29,33 +29,39 @@ public:
             case NOT_STARTED:
                 std::cout << "未开始比赛" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 1) currentState = PREPARATION;
                 break;
             case PREPARATION:
                 std::cout << "准备阶段" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 2) currentState = SELF_CHECK; 
                 break;
             case SELF_CHECK:
                 std::cout << "十五秒裁判系统自检阶段" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 3) currentState = COUNTDOWN; 
                 break;
             case COUNTDOWN:
                 std::cout << "五秒倒计时" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 4) currentState = IN_PROGRESS; 
                 break;
             case IN_PROGRESS:
                 std::cout << "比赛中" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 5) currentState = SETTLEMENT;
                 break;
             case SETTLEMENT:
                 std::cout << "比赛结算中" << std::endl;
                 handleInvalidInput(game_progress);
+                if (game_progress == 0) currentState = NOT_STARTED;
                 break;
         }
     }
 
     void handleInvalidInput(int game_progress)
     {
-        if (game_progress > 5 || !game_progress)
+        if (game_progress < 0 || game_progress > 5)
         {
             std::cout << "missing required input [game_status]..." << std::endl;
         }
