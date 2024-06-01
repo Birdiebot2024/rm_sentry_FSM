@@ -5,7 +5,7 @@
 
 ## 状态机结构
 ```
-(sentry_FSM.png)
+![流程图](./sentry_FSM.png)
 ```
 
 ## 声明
