@@ -38,4 +38,23 @@ digraph StateMachines {
         "Update Hp & Check Hp" -> Safe [label="my_outpost_hp > 500"];
         "Update Hp & Check Hp" -> Danger [label="my_outpost_hp <= 500"];
     }
+
+    subgraph robot_status_state_machine {
+        label = "RobotStatusStateMachine";
+        style=filled;
+        color=lightblue;
+
+        current_hp [label="current_hp"];
+        remaining_bullet [label="remaining_bullet"];
+
+        high_hp [label="High HP\n(current_hp > 200)"];
+        low_hp [label="Low HP\n(current_hp <= 200)"];
+        high_bullet [label="High Bullet\n(remaining_bullet > 0)"];
+        low_bullet [label="Low Bullet\n(remaining_bullet == 0)"];
+
+        current_hp -> high_hp [label="current_hp > 200"];
+        current_hp -> low_hp [label="current_hp <= 200"];
+        remaining_bullet -> high_bullet [label="remaining_bullet > 0"];
+        remaining_bullet -> low_bullet [label="remaining_bullet == 0"];
+    }
 }

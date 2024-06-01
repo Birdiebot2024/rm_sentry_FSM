@@ -129,13 +129,47 @@ private:
     int my_outpost_hp;  // 己方前哨站血量
 };
 
+class RobotStatusStateMachine 
+{
+public:
+    RobotStatusStateMachine() : current_hp(0), remaining_bullet(0) {}
+
+    void updateStatus(int current_hp, int remaining_bullet)
+    {
+        this->current_hp = current_hp;
+        this->remaining_bullet = remaining_bullet;
+        checkHp();
+        checkBullet();
+    }
+
+    void checkHp()
+    {
+        if (current_hp <= 200)
+        {
+            std::cout << "哨兵血量达到危险值" << std::endl;
+        }
+    }
+
+    void checkBullet()
+    {
+        if (remaining_bullet == 0)
+        {
+            std::cout << "剩余发弹量为0" << std::endl;
+        }
+    }
+
+private:
+    int current_hp;
+    int remaining_bullet;
+};
+
 class GameStatusNode : public rclcpp::Node  // 比赛进程节点
 {
 public:
     GameStatusNode() : Node("game_status_node")  // 订阅比赛进程
     {
         game_status_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
-            "/game_status", 10, std::bind(&GameStatusNode::gameStatusCallback, this, std::placeholders::_1)
+            "/cv_decision", 10, std::bind(&GameStatusNode::gameStatusCallback, this, std::placeholders::_1)
         );
     }
 
@@ -161,13 +195,13 @@ private:
     rm_sentry_FSM::GameStatusStateMachine gsm_;
 };
 
-class RobotHpNode : public rclcpp::Node  // 前哨站状态节点
+class OutpostHpNode : public rclcpp::Node  // 前哨站状态节点
 {
 public:
-    RobotHpNode(OutpostStateMachine& osm) : Node("robot_hp_node"), osm_(osm)  // 订阅比赛状态
+    OutpostHpNode(OutpostStateMachine& osm) : Node("robot_hp_node"), osm_(osm)  // 订阅比赛状态
     {
         robot_hp_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
-            "/robot_hp", 10, std::bind(&RobotHpNode::robotHpCallback, this, std::placeholders::_1)
+            "/cv_decision", 10, std::bind(&OutpostHpNode::robotHpCallback, this, std::placeholders::_1)
         );
     }
 
@@ -185,6 +219,29 @@ private:
     OutpostStateMachine& osm_;
 };
 
+class RobotStatusNode : public rclcpp::Node
+{
+public:
+    RobotStatusNode(RobotStatusStateMachine& rssm) : Node("robot_status_node"), rssm_(rssm)
+    {
+        robot_status_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
+            "/cv_decision", 10, std::bind(&RobotStatusNode::robotStatusCallback, this, std::placeholders::_1)
+        );
+    }
+
+private:
+    void robotStatusCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)
+    {
+        std::cout << "current_hp:" << msg->current_hp << std::endl;
+        std::cout << "remaining_bullet" << msg->remaining_bullet << std::endl;
+
+        rssm_.updateStatus(msg->current_hp, msg->remaining_bullet);
+    }
+
+    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr robot_status_subscription_;
+    RobotStatusStateMachine& rssm_;
+};
+
 }  // namespace rm_sentry_FSM
 
 int main(int argc, char *argv[])
@@ -194,11 +251,15 @@ int main(int argc, char *argv[])
     auto game_status_node = std::make_shared<rm_sentry_FSM::GameStatusNode>();
 
     rm_sentry_FSM::OutpostStateMachine outpost_sm;
-    auto robot_hp_node = std::make_shared<rm_sentry_FSM::RobotHpNode>(outpost_sm);
+    auto robot_hp_node = std::make_shared<rm_sentry_FSM::OutpostHpNode>(outpost_sm);
+
+    rm_sentry_FSM::RobotStatusStateMachine robot_status_sm;
+    auto robot_status_node = std::make_shared<rm_sentry_FSM::RobotStatusNode>(robot_status_sm);
 
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(game_status_node);
     executor.add_node(robot_hp_node);
+    executor.add_node(robot_status_node);
     executor.spin();
 
     rclcpp::shutdown();
