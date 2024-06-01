@@ -7,7 +7,7 @@
 namespace rm_sentry_FSM
 {
 
-class SentryStateMachine
+class GameStatusStateMachine  // 比赛进程状态机
 {
 public:
     enum State
@@ -20,11 +20,11 @@ public:
         SETTLEMENT = 5    // 5:比赛结算中
     };
 
-    SentryStateMachine() : currentState(NOT_STARTED) {}
+    GameStatusStateMachine() : currentState(NOT_STARTED) {}  // 将状态机的初始状态设置为 0:未开始比赛
 
     void handleInput(int game_progress)
     {
-        switch (currentState)
+        switch (currentState)  // 检测比赛状态的状态机
         {
             case NOT_STARTED:
                 std::cout << "未开始比赛" << std::endl;
@@ -59,7 +59,12 @@ public:
         }
     }
 
-    void handleInvalidInput(int game_progress)
+    State getCurrentState() const  // 获取当前比赛状态(前哨站判断读取比赛)
+    {
+        return currentState;
+    }
+
+    void handleInvalidInput(int game_progress)  // 检测比赛状态非法输入的函数
     {
         if (game_progress < 0 || game_progress > 5)
         {
@@ -68,27 +73,116 @@ public:
     }
 
 private:
-    State currentState;
+    State currentState;  // 当前状态
 };
 
-class GameStatusNode : public rclcpp::Node
+class OutpostStateMachine  // 前哨站血量状态机
 {
 public:
-    GameStatusNode() : Node("game_status_node")
+    enum Color
     {
-        subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
-            "/game_status", 10, std::bind(&GameStatusNode::topic_callback, this, std::placeholders::_1)
+        RED,  // 0:红色
+        BLUE  // 1:蓝色
+    };
+
+    OutpostStateMachine() : color(RED), my_outpost_hp(0) {}  // 将状态机的初始状态设置为 红色,前哨站血量:0
+
+    void setColor(bool team_color)  // 检测己方颜色
+    {
+        if (team_color)
+        {
+            this->color = BLUE;
+        }
+        else 
+        {
+            this->color = RED;
+        }
+    }
+
+    void updateHp(int red_outpost_hp, int blue_outpost_hp)  // 更新己方前哨站血量
+    {
+        if (color == RED)
+        {
+            my_outpost_hp = red_outpost_hp;
+        } 
+        else if (color == BLUE)
+        {
+            my_outpost_hp = blue_outpost_hp;
+        }
+        checkHp();
+    }
+
+    void checkHp()  // 检测是否到己方前哨站斩杀线
+    {
+        if(my_outpost_hp > 500)
+        {
+            std::cout << "己方前哨站处于安全血量" << std::endl;
+        }
+        else
+        {
+            std::cout << "己方前哨站处于斩杀线" << std::endl;
+        }
+    }
+
+private:
+    Color color;  // 己方颜色
+    int my_outpost_hp;  // 己方前哨站血量
+};
+
+class GameStatusNode : public rclcpp::Node  // 比赛进程节点
+{
+public:
+    GameStatusNode() : Node("game_status_node")  // 订阅比赛进程
+    {
+        game_status_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
+            "/game_status", 10, std::bind(&GameStatusNode::gameStatusCallback, this, std::placeholders::_1)
+        );
+    }
+
+    GameStatusStateMachine& getGameStateMachine()
+    {
+        return gsm_;
+    }
+
+private:
+    void gameStatusCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 比赛进程的回调函数
+    {
+        if (msg->game_progress < 0 || msg->game_progress > 5)
+        {
+            std::cout << "missing required input [game_status]..." << std::endl;
+        }
+        else
+        {
+            gsm_.handleInput(msg->game_progress);
+        }
+    }
+
+    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr game_status_subscription_;
+    rm_sentry_FSM::GameStatusStateMachine gsm_;
+};
+
+class RobotHpNode : public rclcpp::Node  // 前哨站状态节点
+{
+public:
+    RobotHpNode(OutpostStateMachine& osm) : Node("robot_hp_node"), osm_(osm)  // 订阅比赛状态
+    {
+        robot_hp_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
+            "/robot_hp", 10, std::bind(&RobotHpNode::robotHpCallback, this, std::placeholders::_1)
         );
     }
 
 private:
-    void topic_callback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)
+    void robotHpCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 前哨站状态的回调函数
     {
-        sm_.handleInput(msg->game_progress);
+        std::cout << "Red Outpost HP:" << msg->red_outpost_hp << std::endl;
+        std::cout << "Blue Outpost HP:" << msg->blue_outpost_hp << std::endl;
+
+        osm_.setColor(msg->team_color);
+        osm_.updateHp(msg->red_outpost_hp, msg->blue_outpost_hp);
     }
 
-    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr subscription_;
-    rm_sentry_FSM::SentryStateMachine sm_;
+    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr robot_hp_subscription_;
+    OutpostStateMachine& osm_;
 };
 
 }  // namespace rm_sentry_FSM
@@ -96,7 +190,17 @@ private:
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<rm_sentry_FSM::GameStatusNode>());
+    
+    auto game_status_node = std::make_shared<rm_sentry_FSM::GameStatusNode>();
+
+    rm_sentry_FSM::OutpostStateMachine outpost_sm;
+    auto robot_hp_node = std::make_shared<rm_sentry_FSM::RobotHpNode>(outpost_sm);
+
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(game_status_node);
+    executor.add_node(robot_hp_node);
+    executor.spin();
+
     rclcpp::shutdown();
     return 0;
 }

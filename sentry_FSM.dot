@@ -1,0 +1,41 @@
+digraph StateMachines {
+    rankdir=LR;
+
+    subgraph game_status_state_machine {
+        label = "GameStateMachine";
+        style=filled;
+        color=lightgrey;
+        
+        NOT_STARTED -> PREPARATION [label="game_progress == 1"];
+        PREPARATION -> SELF_CHECK [label="game_progress == 2"];
+        SELF_CHECK -> COUNTDOWN [label="game_progress == 3"];
+        COUNTDOWN -> IN_PROGRESS [label="game_progress == 4"];
+        IN_PROGRESS -> SETTLEMENT [label="game_progress == 5"];
+
+        NOT_STARTED [label="NOT_STARTED (0)"];
+        PREPARATION [label="PREPARATION (1)"];
+        SELF_CHECK [label="SELF_CHECK (2)"];
+        COUNTDOWN [label="COUNTDOWN (3)"];
+        IN_PROGRESS [label="IN_PROGRESS (4)"];
+        SETTLEMENT [label="SETTLEMENT (5)"];
+    }
+
+    subgraph outpost_state_machine {
+        label = "OutpostStateMachine";
+        style=filled;
+        color=lightyellow;
+
+        team_color [label="team_color (bool)"];
+        RED [label="RED (false)"];
+        BLUE [label="BLUE (true)"];
+        Safe [label="Safe\n(my_outpost_hp > 500)"];
+        Danger [label="Danger\n(my_outpost_hp <= 500)"];
+
+        team_color -> RED [label="false"];
+        team_color -> BLUE [label="true"];
+        RED -> "Update Hp & Check Hp";
+        BLUE -> "Update Hp & Check Hp";
+        "Update Hp & Check Hp" -> Safe [label="my_outpost_hp > 500"];
+        "Update Hp & Check Hp" -> Danger [label="my_outpost_hp <= 500"];
+    }
+}
