@@ -59,7 +59,7 @@ public:
         }
     }
 
-    State getCurrentState() const  // 获取当前比赛状态(前哨站判断读取比赛)
+    State getCurrentState() const  // 获取当前比赛状态
     {
         return currentState;
     }
@@ -85,7 +85,13 @@ public:
         BLUE  // 1:蓝色
     };
 
-    OutpostStateMachine() : color(RED), my_outpost_hp(0) {}  // 将状态机的初始状态设置为 红色,前哨站血量:0
+    enum HpState
+    {
+        OUTPOST_SAFE,   // 前哨站处于安全血量
+        OUTPOST_DANGER  // 前哨站处于斩杀线
+    };
+
+    OutpostStateMachine() : color(RED), my_outpost_hp(1500), current_hp_state(OUTPOST_SAFE) {}  // 将状态机的初始状态设置为 红色,前哨站血量:1500,当前血量状态(SAFE)
 
     void setColor(bool team_color)  // 检测己方颜色
     {
@@ -112,27 +118,55 @@ public:
         checkHp();
     }
 
-    void checkHp()  // 检测是否到己方前哨站斩杀线
+    bool isOutpostSafe() const
     {
-        if(my_outpost_hp > 500)
-        {
-            std::cout << "己方前哨站处于安全血量" << std::endl;
-        }
-        else
-        {
-            std::cout << "己方前哨站处于斩杀线" << std::endl;
-        }
+        return current_hp_state == OUTPOST_SAFE;
     }
 
 private:
     Color color;  // 己方颜色
     int my_outpost_hp;  // 己方前哨站血量
+    HpState current_hp_state;  // 当前血量状态
+
+    void checkHp()  // 检测是否到己方前哨站斩杀线
+    {
+        if(my_outpost_hp > 500)
+        {
+            if (current_hp_state !=  OUTPOST_SAFE)
+            {
+                current_hp_state =  OUTPOST_SAFE;
+                std::cout << "己方前哨站处于安全血量" << std::endl;
+            }
+            
+        }
+        else
+        {
+            if (current_hp_state != OUTPOST_DANGER)
+            {
+                current_hp_state = OUTPOST_DANGER;
+                std::cout << "己方前哨站处于斩杀线" << std::endl;
+            }
+            
+        }
+    }
 };
 
 class RobotStatusStateMachine 
 {
 public:
-    RobotStatusStateMachine() : current_hp(0), remaining_bullet(0) {}
+    enum HpState
+    {
+        SENTRY_SAFE,  // 哨兵血量安全
+        SENTRY_DANGER // 哨兵血量危险
+    };
+
+    enum BulletState
+    {
+        REMAINING,  // 仍有剩余发弹量
+        EMPTY       // 没有剩余发弹量
+    };
+
+    RobotStatusStateMachine() : current_hp(400), remaining_bullet(400), current_hp_state(SENTRY_SAFE), current_bullet_state(REMAINING) {}
 
     void updateStatus(int current_hp, int remaining_bullet)
     {
@@ -142,25 +176,123 @@ public:
         checkBullet();
     }
 
+    bool isSentrySafe() const
+    {
+        return current_hp_state == SENTRY_SAFE;
+    }
+
+private:
+    int current_hp;  // 哨兵当前生命值
+    int remaining_bullet;  // 哨兵剩余发弹量
+    HpState current_hp_state;  // 哨兵当前生命值状态
+    BulletState current_bullet_state; // 哨兵当前剩余发弹量状态
+
     void checkHp()
     {
-        if (current_hp <= 200)
+        if(current_hp > 200)
         {
-            std::cout << "哨兵血量达到危险值" << std::endl;
+            if (current_hp_state !=  SENTRY_SAFE)
+            {
+                current_hp_state =  SENTRY_SAFE;
+                std::cout << "哨兵处于安全血量" << std::endl;
+            }
+            
+        }
+        else
+        {
+            if (current_hp_state != SENTRY_DANGER)
+            {
+                current_hp_state = SENTRY_DANGER;
+                std::cout << "哨兵处于危险血量" << std::endl;
+            }
+            
         }
     }
 
     void checkBullet()
     {
-        if (remaining_bullet == 0)
+        if(remaining_bullet > 0)
         {
-            std::cout << "剩余发弹量为0" << std::endl;
+            if (current_bullet_state !=  REMAINING)
+            {
+                current_bullet_state =  EMPTY;
+            }
+            
+        }
+        else
+        {
+            if (current_bullet_state != EMPTY)
+            {
+                current_bullet_state = REMAINING;
+                std::cout << "哨兵剩余发弹量为0" << std::endl;
+            }
+            
+        }
+    }
+};
+
+class DecisionStateMachine
+{
+public:
+
+    enum DecisionState
+    {
+        INVALID = 0,
+        ATTACK_POINT1 = 1,
+        DEFEND_POINT1 = 2,
+    };
+
+    DecisionStateMachine(GameStatusStateMachine& gsm, OutpostStateMachine& osm, RobotStatusStateMachine& rssm)
+        : gsm_(gsm), osm_(osm), rssm_(rssm) {}
+
+    DecisionState determineDecisionState() const
+    {
+        std::cout << "Checking Decision State..." << std::endl;
+        std::cout << "Game State: " << gsm_.getCurrentState() << std::endl;
+        std::cout << "Outpost Safe: " << osm_.isOutpostSafe() << std::endl;
+        std::cout << "Sentry Safe: " << rssm_.isSentrySafe() << std::endl;
+
+        if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
+            osm_.isOutpostSafe() && rssm_.isSentrySafe())
+        {
+            return ATTACK_POINT1;
+        }
+        else if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
+            !osm_.isOutpostSafe() && rssm_.isSentrySafe())
+        {
+            return DEFEND_POINT1;
+        }
+        else
+        {
+            return INVALID;
         }
     }
 
+    void makeDecision()
+    {
+        DecisionState decision_state = determineDecisionState();
+
+        switch (decision_state)
+        {
+            case ATTACK_POINT1:
+                std::cout << "正在前往预设进攻点位1" << std::endl;
+                break;
+
+            case DEFEND_POINT1:
+                std::cout << "正在前往预设防守点位2" << std::endl;
+                break;
+
+            case INVALID:
+            default:
+                std::cout << "无效的决策状态" << std::endl;
+                break;
+        }   
+    }
+
 private:
-    int current_hp;
-    int remaining_bullet;
+    GameStatusStateMachine& gsm_;
+    OutpostStateMachine& osm_;
+    RobotStatusStateMachine& rssm_;
 };
 
 class GameStatusNode : public rclcpp::Node  // 比赛进程节点
@@ -198,15 +330,15 @@ private:
 class OutpostHpNode : public rclcpp::Node  // 前哨站状态节点
 {
 public:
-    OutpostHpNode(OutpostStateMachine& osm) : Node("robot_hp_node"), osm_(osm)  // 订阅比赛状态
+    OutpostHpNode(OutpostStateMachine& osm) : Node("outpost_hp_node"), osm_(osm)  // 订阅比赛状态
     {
-        robot_hp_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
-            "/cv_decision", 10, std::bind(&OutpostHpNode::robotHpCallback, this, std::placeholders::_1)
+        outpost_hp_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
+            "/cv_decision", 10, std::bind(&OutpostHpNode::OutpostHpCallback, this, std::placeholders::_1)
         );
     }
 
 private:
-    void robotHpCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 前哨站状态的回调函数
+    void OutpostHpCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 前哨站状态的回调函数
     {
         std::cout << "Red Outpost HP:" << msg->red_outpost_hp << std::endl;
         std::cout << "Blue Outpost HP:" << msg->blue_outpost_hp << std::endl;
@@ -215,7 +347,7 @@ private:
         osm_.updateHp(msg->red_outpost_hp, msg->blue_outpost_hp);
     }
 
-    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr robot_hp_subscription_;
+    rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr outpost_hp_subscription_;
     OutpostStateMachine& osm_;
 };
 
@@ -233,7 +365,7 @@ private:
     void robotStatusCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)
     {
         std::cout << "current_hp:" << msg->current_hp << std::endl;
-        std::cout << "remaining_bullet" << msg->remaining_bullet << std::endl;
+        std::cout << "remaining_bullet:" << msg->remaining_bullet << std::endl;
 
         rssm_.updateStatus(msg->current_hp, msg->remaining_bullet);
     }
@@ -242,12 +374,35 @@ private:
     RobotStatusStateMachine& rssm_;
 };
 
+class DecisionNode : public rclcpp::Node
+{
+public:
+    DecisionNode(DecisionStateMachine& dsm) : Node("decision_node"), dsm_(dsm)
+    {
+        decision_timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(100),
+            std::bind(&DecisionNode::decisionCallback, this)
+        );
+    }
+
+private:
+    void decisionCallback()
+    {
+        std::cout << "Making decision..." << std::endl;
+        dsm_.makeDecision();
+    }
+
+    DecisionStateMachine& dsm_;
+    rclcpp::TimerBase::SharedPtr decision_timer_;
+};
+
 }  // namespace rm_sentry_FSM
 
 int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     
+    rm_sentry_FSM::GameStatusStateMachine game_status_sm;
     auto game_status_node = std::make_shared<rm_sentry_FSM::GameStatusNode>();
 
     rm_sentry_FSM::OutpostStateMachine outpost_sm;
@@ -256,10 +411,14 @@ int main(int argc, char *argv[])
     rm_sentry_FSM::RobotStatusStateMachine robot_status_sm;
     auto robot_status_node = std::make_shared<rm_sentry_FSM::RobotStatusNode>(robot_status_sm);
 
+    rm_sentry_FSM::DecisionStateMachine decision_sm(game_status_sm, outpost_sm, robot_status_sm);
+    auto decision_node = std::make_shared<rm_sentry_FSM::DecisionNode>(decision_sm);
+
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(game_status_node);
     executor.add_node(robot_hp_node);
     executor.add_node(robot_status_node);
+    executor.add_node(decision_node);
     executor.spin();
 
     rclcpp::shutdown();

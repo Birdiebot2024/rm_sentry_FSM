@@ -1,14 +1,14 @@
 source install/setup.sh
 
-ros2 topic pub -r 1 /cv_decision rm_decision_interfaces/msg/CvDecision "{
+ros2 topic pub -r 10 /cv_decision rm_decision_interfaces/msg/CvDecision "{
     game_progress: 1,      
 
-    team_color: 1,
-    red_outpost_hp: 100,
-    blue_outpost_hp: 100,
+    team_color: 0,
+    red_outpost_hp: 1500,
+    blue_outpost_hp: 1500,
 
-    current_hp: 200,
-    remaining_bullet: 0,
+    current_hp: 400,
+    remaining_bullet: 400,
 }" &
 
 wait

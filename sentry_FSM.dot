@@ -5,6 +5,8 @@ digraph StateMachines {
         label = "GameStateMachine";
         style=filled;
         color=lightgrey;
+
+        node [shape=box];
         
         NOT_STARTED -> PREPARATION [label="game_progress == 1"];
         PREPARATION -> SELF_CHECK [label="game_progress == 2"];
@@ -25,6 +27,8 @@ digraph StateMachines {
         style=filled;
         color=lightyellow;
 
+        node [shape=box];
+
         team_color [label="team_color (bool)"];
         RED [label="RED (false)"];
         BLUE [label="BLUE (true)"];
@@ -37,6 +41,8 @@ digraph StateMachines {
         BLUE -> "Update Hp & Check Hp";
         "Update Hp & Check Hp" -> Safe [label="my_outpost_hp > 500"];
         "Update Hp & Check Hp" -> Danger [label="my_outpost_hp <= 500"];
+        Safe -> Danger [label="my_outpost_hp <= 500"];
+        Danger -> Safe [label="my_outpost_hp > 500"];
     }
 
     subgraph robot_status_state_machine {
@@ -44,17 +50,24 @@ digraph StateMachines {
         style=filled;
         color=lightblue;
 
+        node [shape=box];
+
         current_hp [label="current_hp"];
         remaining_bullet [label="remaining_bullet"];
 
-        high_hp [label="High HP\n(current_hp > 200)"];
-        low_hp [label="Low HP\n(current_hp <= 200)"];
-        high_bullet [label="High Bullet\n(remaining_bullet > 0)"];
-        low_bullet [label="Low Bullet\n(remaining_bullet == 0)"];
+        SENTRY_SAFE [label="SENTRY_SAFE\n(current_hp > 200)"];
+        SENTRY_DANGER [label="SENTRY_DANGER\n(current_hp <= 200)"];
+        REMAINING [label="REMAINING\n(remaining_bullet > 0)"];
+        EMPTY [label="EMPTY\n(remaining_bullet == 0)"];
 
-        current_hp -> high_hp [label="current_hp > 200"];
-        current_hp -> low_hp [label="current_hp <= 200"];
-        remaining_bullet -> high_bullet [label="remaining_bullet > 0"];
-        remaining_bullet -> low_bullet [label="remaining_bullet == 0"];
+        current_hp -> SENTRY_SAFE [label="current_hp > 200"];
+        current_hp -> SENTRY_DANGER [label="current_hp <= 200"];
+        SENTRY_SAFE -> SENTRY_DANGER [label="current_hp <= 200"];
+        SENTRY_DANGER -> SENTRY_SAFE [label="current_hp > 200"];
+
+        remaining_bullet -> REMAINING [label="remaining_bullet > 0"];
+        remaining_bullet -> EMPTY [label="remaining_bullet == 0"];
+        REMAINING -> EMPTY [label="remaining_bullet == 0"];
+        EMPTY -> REMAINING [label="remaining_bullet >0"];
     }
 }
