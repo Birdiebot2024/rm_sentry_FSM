@@ -1,6 +1,9 @@
 #include <iostream>
 
 #include "rclcpp/rclcpp.hpp"
+#include "nav2_msgs/action/navigate_to_pose.hpp"
+#include "rclcpp_action/rclcpp_action.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 
 #include "rm_decision_interfaces/msg/cv_decision.hpp"  // 自定义数据类型
 
@@ -72,7 +75,6 @@ public:
         }
     }
 
-private:
     State currentState;  // 当前状态
 };
 
@@ -123,7 +125,6 @@ public:
         return current_hp_state == OUTPOST_SAFE;
     }
 
-private:
     Color color;  // 己方颜色
     int my_outpost_hp;  // 己方前哨站血量
     HpState current_hp_state;  // 当前血量状态
@@ -151,7 +152,7 @@ private:
     }
 };
 
-class RobotStatusStateMachine 
+class RobotStatusStateMachine  // 哨兵自身状态状态机
 {
 public:
     enum HpState
@@ -181,7 +182,6 @@ public:
         return current_hp_state == SENTRY_SAFE;
     }
 
-private:
     int current_hp;  // 哨兵当前生命值
     int remaining_bullet;  // 哨兵剩余发弹量
     HpState current_hp_state;  // 哨兵当前生命值状态
@@ -240,27 +240,35 @@ public:
         INVALID = 0,
         ATTACK_POINT1 = 1,
         DEFEND_POINT1 = 2,
+        SUPPLY_POINT = 3,
     };
 
-    DecisionStateMachine(GameStatusStateMachine& gsm, OutpostStateMachine& osm, RobotStatusStateMachine& rssm)
-        : gsm_(gsm), osm_(osm), rssm_(rssm) {}
+    DecisionStateMachine(GameStatusStateMachine& gsm, OutpostStateMachine& osm, RobotStatusStateMachine& rssm, rclcpp::Node::SharedPtr node)
+        : gsm_(gsm), osm_(osm), rssm_(rssm)
+    {
+    }
 
     DecisionState determineDecisionState() const
     {
-        std::cout << "Checking Decision State..." << std::endl;
-        std::cout << "Game State: " << gsm_.getCurrentState() << std::endl;
-        std::cout << "Outpost Safe: " << osm_.isOutpostSafe() << std::endl;
-        std::cout << "Sentry Safe: " << rssm_.isSentrySafe() << std::endl;
+        // std::cout << "GameStatusStateMachine Address:" << &gsm_ <<std::endl;
+        // std::cout << "OutpostStateMachine Address:" << &osm_ <<std::endl;
+        // std::cout << "RobotStatusStateMachine Address:" << &rssm_ <<std::endl;
 
         if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
             osm_.isOutpostSafe() && rssm_.isSentrySafe())
         {
+            std::cout << "ATTACK_POINT1" << std::endl;
             return ATTACK_POINT1;
         }
         else if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
             !osm_.isOutpostSafe() && rssm_.isSentrySafe())
         {
             return DEFEND_POINT1;
+        }
+        else if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
+            osm_.isOutpostSafe() && !rssm_.isSentrySafe())
+        {
+            return SUPPLY_POINT;
         }
         else
         {
@@ -279,26 +287,30 @@ public:
                 break;
 
             case DEFEND_POINT1:
-                std::cout << "正在前往预设防守点位2" << std::endl;
+                std::cout << "正在前往预设防守点位1" << std::endl;
+                break;
+
+            case SUPPLY_POINT:
+                std::cout << "正在前往预设补给点位" << std::endl;
                 break;
 
             case INVALID:
-            default:
                 std::cout << "无效的决策状态" << std::endl;
                 break;
         }   
     }
 
-private:
     GameStatusStateMachine& gsm_;
     OutpostStateMachine& osm_;
     RobotStatusStateMachine& rssm_;
+
 };
+
 
 class GameStatusNode : public rclcpp::Node  // 比赛进程节点
 {
 public:
-    GameStatusNode() : Node("game_status_node")  // 订阅比赛进程
+    GameStatusNode(GameStatusStateMachine& gsm) : Node("game_status_node"), gsm_(gsm)  // 订阅比赛进程
     {
         game_status_subscription_ = this->create_subscription<rm_decision_interfaces::msg::CvDecision>(
             "/cv_decision", 10, std::bind(&GameStatusNode::gameStatusCallback, this, std::placeholders::_1)
@@ -310,9 +322,10 @@ public:
         return gsm_;
     }
 
-private:
     void gameStatusCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 比赛进程的回调函数
     {
+        // std::cout << "GameStatusStateMachine in callback Address:" << &gsm_ << std::endl;
+
         if (msg->game_progress < 0 || msg->game_progress > 5)
         {
             std::cout << "missing required input [game_status]..." << std::endl;
@@ -324,7 +337,7 @@ private:
     }
 
     rclcpp::Subscription<rm_decision_interfaces::msg::CvDecision>::SharedPtr game_status_subscription_;
-    rm_sentry_FSM::GameStatusStateMachine gsm_;
+    GameStatusStateMachine& gsm_;
 };
 
 class OutpostHpNode : public rclcpp::Node  // 前哨站状态节点
@@ -337,11 +350,16 @@ public:
         );
     }
 
-private:
+    OutpostStateMachine& getOutpostStateMachine()
+    {
+        return osm_;
+    }
+
     void OutpostHpCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)  // 前哨站状态的回调函数
     {
-        std::cout << "Red Outpost HP:" << msg->red_outpost_hp << std::endl;
-        std::cout << "Blue Outpost HP:" << msg->blue_outpost_hp << std::endl;
+        // std::cout << "Red Outpost HP:" << msg->red_outpost_hp << std::endl;
+        // std::cout << "Blue Outpost HP:" << msg->blue_outpost_hp << std::endl;
+        // std::cout << "OutpostStateMachine in callback Address:" << &osm_ << std::endl;
 
         osm_.setColor(msg->team_color);
         osm_.updateHp(msg->red_outpost_hp, msg->blue_outpost_hp);
@@ -361,11 +379,16 @@ public:
         );
     }
 
-private:
+    RobotStatusStateMachine& getRobotStatusStateMachine()
+    {
+        return rssm_;
+    }
+
     void robotStatusCallback(const rm_decision_interfaces::msg::CvDecision::SharedPtr msg)
     {
-        std::cout << "current_hp:" << msg->current_hp << std::endl;
-        std::cout << "remaining_bullet:" << msg->remaining_bullet << std::endl;
+        // std::cout << "current_hp:" << msg->current_hp << std::endl;
+        // std::cout << "remaining_bullet:" << msg->remaining_bullet << std::endl;
+        // std::cout << "RobotStatusStateMachine in callback Address:" << &rssm_ << std::endl;
 
         rssm_.updateStatus(msg->current_hp, msg->remaining_bullet);
     }
@@ -385,10 +408,8 @@ public:
         );
     }
 
-private:
     void decisionCallback()
     {
-        std::cout << "Making decision..." << std::endl;
         dsm_.makeDecision();
     }
 
@@ -402,16 +423,22 @@ int main(int argc, char *argv[])
 {
     rclcpp::init(argc, argv);
     
+    // 创建 ROS 节点
+    auto node = rclcpp::Node::make_shared("decision_navigation_node");
+
     rm_sentry_FSM::GameStatusStateMachine game_status_sm;
-    auto game_status_node = std::make_shared<rm_sentry_FSM::GameStatusNode>();
+    // std::cout << "Main GameStatusStateMachine address:" << &game_status_sm << std::endl;
+    auto game_status_node = std::make_shared<rm_sentry_FSM::GameStatusNode>(game_status_sm);
 
     rm_sentry_FSM::OutpostStateMachine outpost_sm;
+    // std::cout << "Main OutpostStateMachine address:" << &outpost_sm << std::endl;
     auto robot_hp_node = std::make_shared<rm_sentry_FSM::OutpostHpNode>(outpost_sm);
 
     rm_sentry_FSM::RobotStatusStateMachine robot_status_sm;
+    // std::cout << "Main RobotStatusStateMachine address:" << &robot_status_sm << std::endl;
     auto robot_status_node = std::make_shared<rm_sentry_FSM::RobotStatusNode>(robot_status_sm);
 
-    rm_sentry_FSM::DecisionStateMachine decision_sm(game_status_sm, outpost_sm, robot_status_sm);
+    rm_sentry_FSM::DecisionStateMachine decision_sm(game_status_sm, outpost_sm, robot_status_sm, node);
     auto decision_node = std::make_shared<rm_sentry_FSM::DecisionNode>(decision_sm);
 
     rclcpp::executors::SingleThreadedExecutor executor;

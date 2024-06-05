@@ -13,6 +13,7 @@ digraph StateMachines {
         SELF_CHECK -> COUNTDOWN [label="game_progress == 3"];
         COUNTDOWN -> IN_PROGRESS [label="game_progress == 4"];
         IN_PROGRESS -> SETTLEMENT [label="game_progress == 5"];
+        SETTLEMENT -> NOT_STARTED [label="game_progress == 0"];
 
         NOT_STARTED [label="NOT_STARTED (0)"];
         PREPARATION [label="PREPARATION (1)"];
@@ -69,5 +70,24 @@ digraph StateMachines {
         remaining_bullet -> EMPTY [label="remaining_bullet == 0"];
         REMAINING -> EMPTY [label="remaining_bullet == 0"];
         EMPTY -> REMAINING [label="remaining_bullet >0"];
+    }
+    
+    subgraph decision_state_machine{
+        label = "DecisionStateMachine";
+        style=filled;
+        color=lightgreen;
+
+        node [shape=box];
+
+        IN_PROGRESS [label="IN_PROGRESS"];
+        ATTACK_POINT1 [label="ATTACK_POINT1\n(osm_.isOutpostSafe() && rssm_.isSentrySafe())"];
+        DEFEND_POINT1 [label="DEFEND_POINT1\n(!osm_.isOutpostSafe() && rssm_.isSentrySafe())"];
+        SUPPLY_POINT [label="SUPPLY_POINT\n(osm_.isOutpostSafe() && !rssm_.isSentrySafe())"];
+        INVALID [label="INVALID\n(other conditions)"];
+
+        IN_PROGRESS -> ATTACK_POINT1 [label="osm_.isOutpostSafe() && rssm_.isSentrySafe()"];
+        IN_PROGRESS -> DEFEND_POINT1 [label="!osm_.isOutpostSafe() && rssm_.isSentrySafe()"];
+        IN_PROGRESS -> SUPPLY_POINT [label="osm_.isOutpostSafe() && !rssm_.isSentrySafe()"];
+        IN_PROGRESS -> INVALID [label="other conditions"];
     }
 }
