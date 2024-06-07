@@ -1,14 +1,80 @@
 #include <iostream>
+#include <fstream>
+#include <map>
+#include <yaml-cpp/yaml.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 
+
 #include "rm_decision_interfaces/msg/cv_decision.hpp"  // 自定义数据类型
 
 namespace rm_sentry_FSM
 {
+
+class SendGoal
+{
+public:
+    SendGoal(const std::string & name, const rclcpp::Node::SharedPtr & node) : action_name_(name), node_(node) {}
+
+    bool setGoal(nav2_msgs::action::NavigateToPose::Goal & goal, const geometry_msgs::msg::PoseStamped & goal_pose)
+    {
+        goal.pose = goal_pose;
+        goal.pose.header.frame_id = "map";
+        goal.pose.header.stamp = rclcpp::Clock().now();
+
+        std::cout << "Goal_pose:["
+            << std::fixed << std::setprecision(1)
+            << goal.pose.pose.position.x << ","
+            << goal.pose.pose.position.y << ","
+            << goal.pose.pose.position.z << ","
+            << goal.pose.pose.orientation.x << ","
+            << goal.pose.pose.orientation.y << ","
+            << goal.pose.pose.orientation.z << ","
+            << goal.pose.pose.orientation.w << "," << "]\n";
+
+        return true;
+    }
+
+    void onHalt()
+    {
+        RCLCPP_INFO(node_->get_logger(), "SendGoal has been halted.");
+    }
+
+    void onResultReceived(const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::WrappedResult & wr)
+    {
+        switch (wr.code)
+        {
+            case rclcpp_action::ResultCode::SUCCEEDED:
+                RCLCPP_INFO(node_->get_logger(), "Success!!!");
+                break;
+            case rclcpp_action::ResultCode::ABORTED:
+                RCLCPP_INFO(node_->get_logger(), "Goal was aborted");
+                break;
+            case rclcpp_action::ResultCode::CANCELED:
+                RCLCPP_INFO(node_->get_logger(), "Goal was canceled");
+                break;
+            default:
+                RCLCPP_INFO(node_->get_logger(), "Unknown result code");
+                break;    
+        }
+    }
+
+    void onFeedback(const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback)
+    {
+        std::cout << "Distance remaining:" << feedback->distance_remaining << '\n';
+    }
+
+    void onFailure()
+    {
+        RCLCPP_ERROR(node_->get_logger(), "SendGoal failed.");
+    }
+
+    std::string action_name_;
+    rclcpp::Node::SharedPtr node_;
+};
 
 class GameStatusStateMachine  // 比赛进程状态机
 {
@@ -211,6 +277,7 @@ public:
 
     void checkBullet()
     {
+
         if(remaining_bullet > 0)
         {
             if (current_bullet_state !=  REMAINING)
@@ -244,8 +311,43 @@ public:
     };
 
     DecisionStateMachine(GameStatusStateMachine& gsm, OutpostStateMachine& osm, RobotStatusStateMachine& rssm, rclcpp::Node::SharedPtr node)
-        : gsm_(gsm), osm_(osm), rssm_(rssm)
+        : gsm_(gsm), osm_(osm), rssm_(rssm), send_goal_("navigate_to_pose", node)
     {
+        if (!loadNavigationPoints("/home/kay/Desktop/rm_sentry_FSM/rm_sentry_FSM/navigation_points.yaml", navigation_points_)) 
+        {
+            std::cerr << "Failed to load navigation points" << std::endl;
+        }
+    }
+
+    bool loadNavigationPoints(const std::string& yaml_file, std::map<std::string, geometry_msgs::msg::PoseStamped>& points)
+    {
+        try
+        {
+            YAML::Node config = YAML::LoadFile(yaml_file);
+            for (const auto& point : config["points"])
+            {
+                std::string name = point.first.as<std::string>();
+                geometry_msgs::msg::PoseStamped pose;
+                auto pos = point.second["position"];
+                auto ori = point.second["orientation"];
+                pose.pose.position.x = pos[0].as<double>();
+                pose.pose.position.y = pos[1].as<double>();
+                pose.pose.position.z = pos[2].as<double>();
+                
+                pose.pose.orientation.x = ori[0].as<double>();
+                pose.pose.orientation.y = ori[0].as<double>();
+                pose.pose.orientation.z = ori[0].as<double>();
+                pose.pose.orientation.w = ori[0].as<double>();
+
+                points[name] = pose;
+            }
+            return true;
+        }
+        catch (const YAML::Exception& e)
+        {
+            std::cout << "Failed to load navigation points from YAML file:" << e.what() << std::endl;
+            return false;
+        }
     }
 
     DecisionState determineDecisionState() const
@@ -257,7 +359,6 @@ public:
         if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
             osm_.isOutpostSafe() && rssm_.isSentrySafe())
         {
-            std::cout << "ATTACK_POINT1" << std::endl;
             return ATTACK_POINT1;
         }
         else if (gsm_.getCurrentState() == GameStatusStateMachine::IN_PROGRESS &&
@@ -284,6 +385,10 @@ public:
         {
             case ATTACK_POINT1:
                 std::cout << "正在前往预设进攻点位1" << std::endl;
+                if (navigation_points_.find("attack_point1") != navigation_points_.end())
+                {
+                    send_goal_.setGoal(attack_goal_, navigation_points_["attack_point1"]);    
+                }
                 break;
 
             case DEFEND_POINT1:
@@ -303,9 +408,11 @@ public:
     GameStatusStateMachine& gsm_;
     OutpostStateMachine& osm_;
     RobotStatusStateMachine& rssm_;
+    SendGoal send_goal_;
+    std::map<std::string, geometry_msgs::msg::PoseStamped> navigation_points_;
+    nav2_msgs::action::NavigateToPose::Goal attack_goal_;
 
 };
-
 
 class GameStatusNode : public rclcpp::Node  // 比赛进程节点
 {
@@ -424,7 +531,8 @@ int main(int argc, char *argv[])
     rclcpp::init(argc, argv);
     
     // 创建 ROS 节点
-    auto node = rclcpp::Node::make_shared("decision_navigation_node");
+    auto node = rclcpp::Node::make_shared("navigation_node");
+    rm_sentry_FSM::SendGoal send_goal("navigation_to_pose", node);
 
     rm_sentry_FSM::GameStatusStateMachine game_status_sm;
     // std::cout << "Main GameStatusStateMachine address:" << &game_status_sm << std::endl;
