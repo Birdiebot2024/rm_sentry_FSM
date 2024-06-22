@@ -17,7 +17,10 @@ namespace rm_sentry_FSM
 class SendGoal
 {
 public:
-    SendGoal(const std::string & name, const rclcpp::Node::SharedPtr & node) : action_name_(name), node_(node) {}
+    SendGoal(const std::string & name, const rclcpp::Node::SharedPtr & node) : action_name_(name), node_(node) 
+    {
+        publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("goal_pose", 10);
+    }
 
     bool setGoal(nav2_msgs::action::NavigateToPose::Goal & goal, const geometry_msgs::msg::PoseStamped & goal_pose)
     {
@@ -34,6 +37,9 @@ public:
             << goal.pose.pose.orientation.y << ","
             << goal.pose.pose.orientation.z << ","
             << goal.pose.pose.orientation.w << "," << "]\n";
+
+        publisher_->publish(goal.pose);
+        RCLCPP_INFO(node_->get_logger(), "Published goal_pose message");
 
         return true;
     }
@@ -74,6 +80,7 @@ public:
 
     std::string action_name_;
     rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher_;
 };
 
 class GameStatusStateMachine  // 比赛进程状态机
@@ -313,7 +320,7 @@ public:
     DecisionStateMachine(GameStatusStateMachine& gsm, OutpostStateMachine& osm, RobotStatusStateMachine& rssm, rclcpp::Node::SharedPtr node)
         : gsm_(gsm), osm_(osm), rssm_(rssm), send_goal_("navigate_to_pose", node)
     {
-        if (!loadNavigationPoints("/home/kay/Desktop/rm_sentry_FSM/rm_sentry_FSM/navigation_points.yaml", navigation_points_)) 
+        if (!loadNavigationPoints("/home/pq/Desktop/rm_vision/src/rm_sentry_FSM/rm_sentry_FSM/navigation_points.yaml", navigation_points_)) 
         {
             std::cerr << "Failed to load navigation points" << std::endl;
         }
@@ -393,6 +400,10 @@ public:
 
             case DEFEND_POINT1:
                 std::cout << "正在前往预设防守点位1" << std::endl;
+                if (navigation_points_.find("attack_point1") != navigation_points_.end())
+                {
+                    send_goal_.setGoal(defend_goal_, navigation_points_["defend_point1"]);    
+                }
                 break;
 
             case SUPPLY_POINT:
@@ -411,6 +422,7 @@ public:
     SendGoal send_goal_;
     std::map<std::string, geometry_msgs::msg::PoseStamped> navigation_points_;
     nav2_msgs::action::NavigateToPose::Goal attack_goal_;
+    nav2_msgs::action::NavigateToPose::Goal defend_goal_;
 
 };
 
@@ -554,6 +566,7 @@ int main(int argc, char *argv[])
     executor.add_node(robot_hp_node);
     executor.add_node(robot_status_node);
     executor.add_node(decision_node);
+    executor.add_node(node);
     executor.spin();
 
     rclcpp::shutdown();
