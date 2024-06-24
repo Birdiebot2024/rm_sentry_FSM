@@ -17,9 +17,9 @@ namespace rm_sentry_FSM
 class SendGoal
 {
 public:
-    SendGoal(const std::string & name, const rclcpp::Node::SharedPtr & node) : action_name_(name), node_(node) 
+    SendGoal(const std::string & name, const rclcpp::Node::SharedPtr & node) : action_name_(name), node_(node)
     {
-        publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("goal_pose", 10);
+        this->publisher_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("goal_pose", 10);
     }
 
     bool setGoal(nav2_msgs::action::NavigateToPose::Goal & goal, const geometry_msgs::msg::PoseStamped & goal_pose)
@@ -38,7 +38,13 @@ public:
             << goal.pose.pose.orientation.z << ","
             << goal.pose.pose.orientation.w << "," << "]\n";
 
-        publisher_->publish(goal.pose);
+        if (publisher_ == nullptr) {
+        std::cout << "Error: publisher_ is nullptr" << std::endl;
+        } else {
+        std::cout << "publisher_ is correctly initialized" << std::endl;
+        }
+
+        this->publisher_->publish(goal.pose);
         RCLCPP_INFO(node_->get_logger(), "Published goal_pose message");
 
         return true;
@@ -342,12 +348,19 @@ public:
                 pose.pose.position.z = pos[2].as<double>();
                 
                 pose.pose.orientation.x = ori[0].as<double>();
-                pose.pose.orientation.y = ori[0].as<double>();
-                pose.pose.orientation.z = ori[0].as<double>();
-                pose.pose.orientation.w = ori[0].as<double>();
+                pose.pose.orientation.y = ori[1].as<double>();
+                pose.pose.orientation.z = ori[2].as<double>();
+                pose.pose.orientation.w = ori[3].as<double>();
 
                 points[name] = pose;
+
+                std::cout << "Loaded point: " << name 
+                      << " Position: [" << pose.pose.position.x << ", " << pose.pose.position.y << ", " << pose.pose.position.z << "]"
+                      << " Orientation: [" << pose.pose.orientation.x << ", " << pose.pose.orientation.y << ", " << pose.pose.orientation.z << ", " << pose.pose.orientation.w << "]"
+                      << std::endl;
             }
+            std::cout << "Successfully loaded the YAML file." << std::endl;
+
             return true;
         }
         catch (const YAML::Exception& e)
@@ -388,21 +401,32 @@ public:
     {
         DecisionState decision_state = determineDecisionState();
 
+
+        std::map<std::string, geometry_msgs::msg::PoseStamped>::iterator it;
+
         switch (decision_state)
         {
             case ATTACK_POINT1:
+                it = navigation_points_.find("attack_point1");
+                std::cout << it->second.pose.position.x << " " << navigation_points_.end()->second.pose.position.x << std::endl;
                 std::cout << "正在前往预设进攻点位1" << std::endl;
-                if (navigation_points_.find("attack_point1") != navigation_points_.end())
+                if (it->second.pose == navigation_points_.end()->second.pose)
                 {
                     send_goal_.setGoal(attack_goal_, navigation_points_["attack_point1"]);    
                 }
                 break;
 
             case DEFEND_POINT1:
+                it = navigation_points_.find("defend_point1");
+                std::cout << it->second.pose.position.x << " " << it->second.pose.position.y << " " << it->second.pose.position.z << std::endl;
                 std::cout << "正在前往预设防守点位1" << std::endl;
-                if (navigation_points_.find("attack_point1") != navigation_points_.end())
+                if (it->second.pose == navigation_points_.end()->second.pose)
                 {
-                    send_goal_.setGoal(defend_goal_, navigation_points_["defend_point1"]);    
+                    send_goal_.setGoal(defend_goal_, it->second);    
+                }
+                else
+                {
+                    std::cout << "防守点位1不存在" << std::endl;
                 }
                 break;
 
