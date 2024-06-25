@@ -1,32 +1,10 @@
-attack_point1:
-  position:
-    x: 1.0
-    y: 1.0
-    z: 0.0
-  orientation:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-    w: 1.0
-    
-defend_point1:
-  position:
-    x: 2.0
-    y: 2.0
-    z: 0.0
-  orientation:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-    w: 1.0
-
-supply_point1:
-  position:
-    x: -1.0
-    y: -1.0
-    z: 0.0
-  orientation:
-    x: 0.0
-    y: 0.0
-    z: 0.0
-    w: 1.0
+points:
+  attack_point1:
+    position: [1.0, 2.0, 0.0]
+    orientation: [0.0, 0.0, 0.0, 0.0]
+  defend_point1:
+    position: [2.0, 1.0, 0.0]
+    orientation: [0.0, 0.0, 0.0, 0.0]
+  supply_point1:
+    position: [0.0, 0.0, 0.0]
+    orientation: [0.0, 0.0, 0.0, 0.0]

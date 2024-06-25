@@ -337,12 +337,33 @@ public:
         try
         {
             YAML::Node config = YAML::LoadFile(yaml_file);
+
+            if (!config["points"]) 
+            {
+                std::cerr << "YAML 文件中没有 'points' 节点。" << std::endl;
+                return false;
+            }
+
             for (const auto& point : config["points"])
             {
                 std::string name = point.first.as<std::string>();
                 geometry_msgs::msg::PoseStamped pose;
+
+                    if (!point.second["position"] || !point.second["orientation"]) 
+                {
+                    std::cerr << "点 " << name << " 缺少 'position' 或 'orientation'。" << std::endl;
+                    continue;
+                }
+
                 auto pos = point.second["position"];
                 auto ori = point.second["orientation"];
+
+                if (pos.size() != 3 || ori.size() != 4) 
+                {
+                    std::cerr << "点 " << name << " 的 'position' 或 'orientation' 大小无效。" << std::endl;
+                    continue;
+                }
+
                 pose.pose.position.x = pos[0].as<double>();
                 pose.pose.position.y = pos[1].as<double>();
                 pose.pose.position.z = pos[2].as<double>();
@@ -408,30 +429,74 @@ public:
         {
             case ATTACK_POINT1:
                 it = navigation_points_.find("attack_point1");
-                std::cout << it->second.pose.position.x << " " << navigation_points_.end()->second.pose.position.x << std::endl;
-                std::cout << "正在前往预设进攻点位1" << std::endl;
-                if (it->second.pose == navigation_points_.end()->second.pose)
+                
+                std::cout 
+                << "x:" <<it->second.pose.position.x << " " 
+                << "y:" << it->second.pose.position.y << " " 
+                << "z:" << it->second.pose.position.z 
+                << std::endl;
+
+                if (it != navigation_points_.end())
                 {
-                    send_goal_.setGoal(attack_goal_, navigation_points_["attack_point1"]);    
+                    std::cout << "正在前往预设进攻点位1" << std::endl;
+                    send_goal_.setGoal(attack_point1_, it->second);
                 }
+                else
+                {
+                    std::cerr << "进攻点位1不存在" << std::endl;
+                }
+
                 break;
 
             case DEFEND_POINT1:
                 it = navigation_points_.find("defend_point1");
-                std::cout << it->second.pose.position.x << " " << it->second.pose.position.y << " " << it->second.pose.position.z << std::endl;
-                std::cout << "正在前往预设防守点位1" << std::endl;
-                if (it->second.pose == navigation_points_.end()->second.pose)
+
+                std::cout 
+                << "x:" <<it->second.pose.position.x << " " 
+                << "y:" << it->second.pose.position.y << " " 
+                << "z:" << it->second.pose.position.z 
+                << std::endl;
+
+                // This is F**KING wrong!!!
+                // if (it->second.pose == navigation_points_.end()->second.pose)
+                // {
+                //     send_goal_.setGoal(defend_goal_, it->second);    
+                // }
+                // else
+                // {
+                //     std::cout << "防守点位1不存在" << std::endl;
+                // }
+
+                if (it != navigation_points_.end())
                 {
-                    send_goal_.setGoal(defend_goal_, it->second);    
+                    std::cout << "正在前往预设防守点位1" << std::endl;
+                    send_goal_.setGoal(defend_point1_, it->second);
                 }
                 else
                 {
-                    std::cout << "防守点位1不存在" << std::endl;
+                    std::cerr << "防守点位1不存在" << std::endl;
                 }
+
                 break;
 
             case SUPPLY_POINT:
-                std::cout << "正在前往预设补给点位" << std::endl;
+                it = navigation_points_.find("supply_point1");
+                
+                std::cout 
+                << "x:" <<it->second.pose.position.x << " " 
+                << "y:" << it->second.pose.position.y << " " 
+                << "z:" << it->second.pose.position.z 
+                << std::endl;
+
+                if (it != navigation_points_.end())
+                {
+                    std::cout << "正在前往预设补给点位1" << std::endl;
+                    send_goal_.setGoal(supply_point1_, it->second);
+                }
+                else
+                {
+                    std::cerr << "补给点位1不存在" << std::endl;
+                }
                 break;
 
             case INVALID:
@@ -445,8 +510,9 @@ public:
     RobotStatusStateMachine& rssm_;
     SendGoal send_goal_;
     std::map<std::string, geometry_msgs::msg::PoseStamped> navigation_points_;
-    nav2_msgs::action::NavigateToPose::Goal attack_goal_;
-    nav2_msgs::action::NavigateToPose::Goal defend_goal_;
+    nav2_msgs::action::NavigateToPose::Goal attack_point1_;
+    nav2_msgs::action::NavigateToPose::Goal defend_point1_;
+    nav2_msgs::action::NavigateToPose::Goal supply_point1_;
 
 };
 
